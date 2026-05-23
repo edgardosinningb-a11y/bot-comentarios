@@ -8,7 +8,7 @@ app.use(express.json());
 // ============================================================
 const CONFIG = {
   // Token que generaste en Graph API Explorer
-  PAGE_ACCESS_TOKEN: 'EAAZAlarWapqwBRiXe8H9wf1ySdFUKhe4yxHzj8WwUha9zDYdwcY4df9cnnEnyN4sVf4vI8BNyyY6oJWbMsex0Bbv9Xp45MSmZCpwZCsBvQuNaUCsgAv721UCGRGKQhoNsGCS6iybf0SobfjfZAMQTzhypZBxwZC1qSl5KCzzvJb8TxA8SBKencevPfjIPRk9K7ZAmErh3EU6ZAvXwKKbV6BBGM8sfpI1YyZCjmp3h',
+  PAGE_ACCESS_TOKEN: 'EAAZAlarWapqwBRvzQK7nVo6g9ZBmeapwiOLvE3aEwJ3eWDxCnbhnGk00ZAAzHfXtQAIJiwwrx6bDlDFvfmzdItV9wvbRm3iwy4teAAthOwMltuZAf5HWyVD0KKSKH0qDtCEHnD43jifbZAHZBJzP2KZCwDC3FttVsVrz4IOZA4CbiVPeKTyCb3SOIfrZAZC2yE3QfwYxPoNldv6mB9Vp7ZAObT4xbhAZBZA95fYhkly4Kopt8XEf3cuwVJe3EO5xyoDO8d5ZAUgH2aikRtFgZDZD',
 
   // App Secret de Meta Developers → Configuración → Información básica
   APP_SECRET: 'be863837053b96dd853975b5cd88468f',
