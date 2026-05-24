@@ -9,7 +9,7 @@ app.use(express.json());
 //      En Railway: Variables → PAGE_ACCESS_TOKEN → pega tu token
 // ============================================================
 const CONFIG = {
-  PAGE_ACCESS_TOKEN: process.env.PAGE_ACCESS_TOKEN || 'EAAZAlarWapqwBRroP1zaAIozvDjlOgR6YlHsUCSamSiOPlzmcqZArtOVbAoyMzvVrHcvIAquNyU04K07YNvyqUYwiKKyrVTgNXA2h4yrZAxomftl2muBK14oDNtZCgWnKfcMs1CgZCn9668FL9tHDdyZBfbmgmBqZCtLk7VZBZBAyGNJcMpjDwAIzf4115Q1ZBrqJ6WBWj62Rd8b0z66ZBqucPQYnShr4ekTL4HotKiRkyU9hTpv33UqKZCZATeL88du81b4ZCzBTl31RHbjpWsA0aZBQZDZD',
+  PAGE_ACCESS_TOKEN: process.env.PAGE_ACCESS_TOKEN || 'EAAZAlarWapqwBRmHNKPpa4gFr5YTGfDUUi5tt5qJnriJTHlsZCWbXlYkqZBEkw3eTOehOg4rYDhXAQwT1K5C5dErRz6ZBHrfBOWaKIxRNaFsPPaf5EDPZCmMISN01CdsWlL3DzNVr6is6ixbhWsSMQEZCasUKQu5SLXLBhLQh7lhcdgEr3VCBEpCw5OcXE4tqpXD4pC0BfACM8hTxQ9LCKDBMHKKWRZCxbDzvL6ujLxEztqvjjKJ9ApNtB752wcCAzzeDIqs3wFrZBk7gBw59QZDZD',
   APP_SECRET:        process.env.APP_SECRET || 'be863837053b96dd853975b5cd88468f',
   IG_ACCOUNT_ID:     '17841478577595371',
   VERIFY_TOKEN:      'mi-token-secreto-2025',
