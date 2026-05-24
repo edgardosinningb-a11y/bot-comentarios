@@ -4,65 +4,98 @@ const app = express();
 app.use(express.json());
 
 // ============================================================
-//  CONFIGURACIÓN — edita solo esta sección
+//  CONFIGURACIÓN
+//  ⚠️  El PAGE_ACCESS_TOKEN se lee desde variable de entorno.
+//      En Railway: Variables → PAGE_ACCESS_TOKEN → pega tu token
 // ============================================================
 const CONFIG = {
-  // Token que generaste en Graph API Explorer
-  PAGE_ACCESS_TOKEN: 'EAAZAlarWapqwBRm5Q1FgZA5tqtMM6KxfMBmN2cx7tQZBweHEjkGU99VNNQAFcDL9bQUEALUuwxwNK4GnSfti1hY8AMcZBZAtX9CZBwKtcXvN7kO1QDot3ujNppTIztQTchRpBNIdYlqDNvBsgtFd2cWT7sjbKBBNZCxkvM1ZCMECmXof8RGBcjbWDEhLZC7OvmZCpZC73wZD',
+  PAGE_ACCESS_TOKEN: process.env.PAGE_ACCESS_TOKEN || 'PEGA_AQUI_SOLO_EN_DESARROLLO',
+  APP_SECRET:        process.env.APP_SECRET || 'be863837053b96dd853975b5cd88468f',
+  IG_ACCOUNT_ID:     '17841478577595371',
+  VERIFY_TOKEN:      'mi-token-secreto-2025',
 
-  // App Secret de Meta Developers → Configuración → Información básica
-  APP_SECRET: 'be863837053b96dd853975b5cd88468f',
-
-  // ID de tu cuenta de Instagram
-  IG_ACCOUNT_ID: '17841478577595371',
-
-  // Token que inventas tú — debe coincidir con el que pongas en Meta Developers → Webhook
-  VERIFY_TOKEN: 'mi-token-secreto-2025',
-
-  // ---- Mensajes automáticos ----
-  // Varias respuestas públicas al comentario — el bot elige una al azar
   RESPUESTAS_COMENTARIO: [
-    'Cuando entiendes como soltar con intención,tu vida empieza a sentirse diferente.Revisa tus mensajes, ahí te deje mas información',
-    'Si esto te resonó,no es casualidad.Revisa tus mensajes💌 te dejé información para empezar a soltar de verdad',
-    '¡Esto puede ser un antes y un después en tu proceso de soltar.Revisa tus mensajes📩, te dejé algo importante',
+    'Cuando entiendes como soltar con intención, tu vida empieza a sentirse diferente. Revisa tus mensajes, ahí te dejé más información 💌',
+    'Si esto te resonó, no es casualidad. Revisa tus mensajes 💌 te dejé información para empezar a soltar de verdad',
+    '¡Esto puede ser un antes y un después en tu proceso de soltar! Revisa tus mensajes 📩, te dejé algo importante',
   ],
 
-  // Mensaje privado (DM) que se envía al que comenta
-  DM_TEXTO: '¡Hola! Gracias por tu comentario. A veces no extrañas a la persona… extrañas lo que esperabas que fuera.\nY soltar eso cuesta.\n\nPor eso creé este proceso: para ayudarte a cerrar la historia, dejar de esperar y volver a sentirte en paz contigo.\n\n✨ Aquí puedes verlo!:',
+  DM_TEXTO:  '¡Hola! Gracias por tu comentario. A veces no extrañas a la persona… extrañas lo que esperabas que fuera.\nY soltar eso cuesta.\n\nPor eso creé este proceso: para ayudarte a cerrar la historia, dejar de esperar y volver a sentirte en paz contigo.\n\n✨ Aquí puedes verlo:',
   DM_ENLACE: 'https://puntointerno.my.canva.site/web-suelta-sin-mirar-atr-s',
 
-  // Mensaje para quien responde una historia de Instagram
-  HISTORIA_DM_TEXTO: 'A veces no extrañas a la persona… extrañas lo que esperabas que fuera.\nY soltar eso cuesta.\n\nPor eso creé este proceso: para ayudarte a cerrar la historia, dejar de esperar y volver a sentirte en paz contigo.\n\n✨ Aquí puedes verlo!:',
+  HISTORIA_DM_TEXTO:  'A veces no extrañas a la persona… extrañas lo que esperabas que fuera.\nY soltar eso cuesta.\n\nPor eso creé este proceso: para ayudarte a cerrar la historia, dejar de esperar y volver a sentirte en paz contigo.\n\n✨ Aquí puedes verlo:',
   HISTORIA_DM_ENLACE: 'https://puntointerno.my.canva.site/web-suelta-sin-mirar-atr-s',
 };
 // ============================================================
 
-// Función para elegir respuesta aleatoria
+// ---- Anti-spam: registro de usuarios contactados recientemente ----
+// Guarda { userId: timestamp } para no escribirles dos veces en 24h
+const usuariosContactados = new Map();
+const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 horas
+
+function yaContactado(userId) {
+  const ultima = usuariosContactados.get(userId);
+  if (!ultima) return false;
+  return Date.now() - ultima < COOLDOWN_MS;
+}
+
+function marcarContactado(userId) {
+  usuariosContactados.set(userId, Date.now());
+}
+
+// Limpia el mapa cada hora para no acumular memoria
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [id, ts] of usuariosContactados) {
+    if (ahora - ts > COOLDOWN_MS) usuariosContactados.delete(id);
+  }
+}, 60 * 60 * 1000);
+
+// ---- Helpers ----
 function respuestaAleatoria() {
   const lista = CONFIG.RESPUESTAS_COMENTARIO;
   return lista[Math.floor(Math.random() * lista.length)];
 }
 
-// Verificación del webhook
+// Espera N milisegundos (evita detección de spam)
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ID de tu página de Facebook — para ignorar los propios comentarios del bot
+const PAGE_ID = '907360732458163';
+
+// Códigos de error de Meta que NO vale la pena reintentar
+const ERRORES_IGNORAR = new Set([100, 200, 551, 368, 10]);
+
+function debeIgnorar(error) {
+  const code = error.response?.data?.error?.code;
+  return code && ERRORES_IGNORAR.has(code);
+}
+
+// ============================================================
+//  WEBHOOK — verificación
+// ============================================================
 app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
   if (mode === 'subscribe' && token === CONFIG.VERIFY_TOKEN) {
-    console.log('Webhook verificado correctamente');
+    console.log('✅ Webhook verificado');
     res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
   }
 });
 
-// Recibe los eventos de Meta
+// ============================================================
+//  WEBHOOK — recibe eventos
+// ============================================================
 app.post('/webhook', async (req, res) => {
+  // Responde 200 de inmediato para que Meta no reintente
   res.sendStatus(200);
 
   const body = req.body;
-  if (!body || !body.object) return;
+  if (!body?.object) return;
 
   // ---- FACEBOOK ----
   if (body.object === 'page') {
@@ -71,11 +104,26 @@ app.post('/webhook', async (req, res) => {
         if (change.field === 'feed' && change.value.item === 'comment') {
           const comentario = change.value;
           if (comentario.verb !== 'add') continue;
+
           const commentId = comentario.comment_id;
-          const senderId = comentario.from?.id;
-          console.log(`Nuevo comentario FB de ${senderId}: ${comentario.message}`);
+          const senderId  = comentario.from?.id;
+
+          // Ignorar comentarios del propio bot para evitar bucle infinito
+          if (senderId === PAGE_ID) continue;
+
+          console.log(`📩 Comentario FB de ${senderId}: ${comentario.message}`);
+
           await responderComentarioFB(commentId);
-          if (senderId) await enviarDMFacebook(senderId);
+
+          // Delay anti-spam entre respuesta pública y DM
+          await esperar(1500);
+
+          if (senderId && !yaContactado(senderId)) {
+            await enviarDMFacebook(senderId);
+            marcarContactado(senderId);
+          } else if (senderId) {
+            console.log(`⏭️  FB: ${senderId} ya fue contactado recientemente, omitiendo DM`);
+          }
         }
       }
     }
@@ -85,21 +133,34 @@ app.post('/webhook', async (req, res) => {
   if (body.object === 'instagram') {
     for (const entry of body.entry || []) {
       for (const change of entry.changes || []) {
+
         if (change.field === 'comments') {
           const comentario = change.value;
-          const commentId = comentario.id;
-          const senderId = comentario.from?.id;
-          console.log(`Nuevo comentario IG de ${senderId}: ${comentario.text}`);
+          const commentId  = comentario.id;
+          const senderId   = comentario.from?.id;
+          console.log(`📩 Comentario IG de ${senderId}: ${comentario.text}`);
+
           await responderComentarioIG(commentId);
-          if (senderId) await enviarDMInstagram(senderId, false);
+          await esperar(1500);
+
+          if (senderId && !yaContactado(senderId)) {
+            await enviarDMInstagram(senderId, false);
+            marcarContactado(senderId);
+          } else if (senderId) {
+            console.log(`⏭️  IG: ${senderId} ya fue contactado recientemente, omitiendo DM`);
+          }
         }
 
         if (change.field === 'messages') {
-          const msg = change.value;
+          const msg      = change.value;
+          const senderId = msg.sender?.id;
           if (msg.message?.attachments?.[0]?.type === 'story_mention') {
-            const senderId = msg.sender?.id;
-            console.log(`Respuesta a historia de ${senderId}`);
-            if (senderId) await enviarDMInstagram(senderId, true);
+            console.log(`📖 Respuesta a historia de ${senderId}`);
+            if (senderId && !yaContactado(senderId)) {
+              await esperar(1000);
+              await enviarDMInstagram(senderId, true);
+              marcarContactado(senderId);
+            }
           }
         }
       }
@@ -107,6 +168,9 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// ============================================================
+//  FUNCIONES DE ENVÍO
+// ============================================================
 async function responderComentarioFB(commentId) {
   try {
     await axios.post(
@@ -114,9 +178,13 @@ async function responderComentarioFB(commentId) {
       { message: respuestaAleatoria() },
       { params: { access_token: CONFIG.PAGE_ACCESS_TOKEN } }
     );
-    console.log('Comentario FB respondido');
+    console.log('✅ Comentario FB respondido');
   } catch (e) {
-    console.error('Error respondiendo comentario FB:', e.response?.data || e.message);
+    if (debeIgnorar(e)) {
+      console.warn(`⚠️  FB comentario ignorado (código ${e.response?.data?.error?.code})`);
+    } else {
+      console.error('❌ Error respondiendo comentario FB:', e.response?.data || e.message);
+    }
   }
 }
 
@@ -126,13 +194,17 @@ async function enviarDMFacebook(recipientId) {
       'https://graph.facebook.com/v19.0/me/messages',
       {
         recipient: { id: recipientId },
-        message: { text: `${CONFIG.DM_TEXTO}\n\n${CONFIG.DM_ENLACE}` },
+        message:   { text: `${CONFIG.DM_TEXTO}\n\n${CONFIG.DM_ENLACE}` },
       },
       { params: { access_token: CONFIG.PAGE_ACCESS_TOKEN } }
     );
-    console.log(`DM FB enviado a ${recipientId}`);
+    console.log(`✅ DM FB enviado a ${recipientId}`);
   } catch (e) {
-    console.error('Error enviando DM FB:', e.response?.data || e.message);
+    if (debeIgnorar(e)) {
+      console.warn(`⚠️  DM FB ignorado para ${recipientId} (código ${e.response?.data?.error?.code})`);
+    } else {
+      console.error('❌ Error enviando DM FB:', e.response?.data || e.message);
+    }
   }
 }
 
@@ -143,9 +215,13 @@ async function responderComentarioIG(commentId) {
       { message: respuestaAleatoria() },
       { params: { access_token: CONFIG.PAGE_ACCESS_TOKEN } }
     );
-    console.log('Comentario IG respondido');
+    console.log('✅ Comentario IG respondido');
   } catch (e) {
-    console.error('Error respondiendo comentario IG:', e.response?.data || e.message);
+    if (debeIgnorar(e)) {
+      console.warn(`⚠️  IG comentario ignorado (código ${e.response?.data?.error?.code})`);
+    } else {
+      console.error('❌ Error respondiendo comentario IG:', e.response?.data || e.message);
+    }
   }
 }
 
@@ -159,16 +235,20 @@ async function enviarDMInstagram(recipientId, esHistoria = false) {
       `https://graph.facebook.com/v19.0/${CONFIG.IG_ACCOUNT_ID}/messages`,
       {
         recipient: { id: recipientId },
-        message: { text: texto },
+        message:   { text: texto },
       },
       { params: { access_token: CONFIG.PAGE_ACCESS_TOKEN } }
     );
-    console.log(`DM IG enviado a ${recipientId} (historia: ${esHistoria})`);
+    console.log(`✅ DM IG enviado a ${recipientId} (historia: ${esHistoria})`);
   } catch (e) {
-    console.error('Error enviando DM IG:', e.response?.data || e.message);
+    if (debeIgnorar(e)) {
+      console.warn(`⚠️  DM IG ignorado para ${recipientId} (código ${e.response?.data?.error?.code})`);
+    } else {
+      console.error('❌ Error enviando DM IG:', e.response?.data || e.message);
+    }
   }
 }
 
+// ============================================================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Bot corriendo en puerto ${PORT}`));
-
+app.listen(PORT, () => console.log(`🤖 Bot corriendo en puerto ${PORT}`));
