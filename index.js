@@ -138,6 +138,10 @@ app.post('/webhook', async (req, res) => {
           const comentario = change.value;
           const commentId  = comentario.id;
           const senderId   = comentario.from?.id;
+
+          // Ignorar comentarios del propio bot para evitar bucle infinito
+          if (senderId === CONFIG.IG_ACCOUNT_ID) continue;
+
           console.log(`📩 Comentario IG de ${senderId}: ${comentario.text}`);
 
           await responderComentarioIG(commentId);
